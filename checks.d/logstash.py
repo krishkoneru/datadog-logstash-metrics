@@ -83,6 +83,8 @@ class LogstashCheck(AgentCheck):
                         "jvm.gc.collectors.young.collection_time_in_millis",
                         "jvm.gc.collectors.young.collection_count"]
 
+        self._send_metrics(metric_names, url)
+
     def _send_metrics(self, metric_names, endpoint):
         '''
         :param list of metric_names: takes metric name with dot notation. eg. ['pipeline.queue.data.free_space_in_bytes', ...]
