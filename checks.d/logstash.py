@@ -106,7 +106,7 @@ class LogstashCheck(AgentCheck):
                         "jvm.gc.collectors.young.collection_time_in_millis",
                         "jvm.gc.collectors.young.collection_count"]
 
-        self._send_metrics(metric_names, response_json)
+        self._send_metrics("logstash", metric_names, response_json)
 
     def _send_metrics(self, namespace, metric_names, payload_dict):
         '''
