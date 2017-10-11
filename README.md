@@ -7,10 +7,24 @@ Metrics
 -------
 
 *Node Stats*
-* `logstash.node_stats.jvm`
-* `logstash.node_stats`
+
+* `logstash.pipeline.events.in`
+* `logstash.pipeline.events.out`
+* `logstash.pipeline.events.filtered`
+* `logstash.pipeline.events.queue_push_duration_in_millis`
+* `logstash.pipeline.events.duration_in_millis`
+* `logstash.pipeline.queue.events`
+* `logstash.pipeline.queue.data.free_space_in_bytes`
+* `logstash.pipeline.queue.capacity.page_capacity_in_bytes`
+* `logstash.pipeline.queue.capacity.max_queue_size_in_bytes`
+* `logstash.pipeline.queue.capacity.max_unread_events`
+* `logstash.pipeline.reloads.successes`
+* `logstash.pipeline.reloads.failures`
+
+TODO document pipeline plugin metrics.
+TODO document jvm metrics
 
 Checks
-======
+------
 
-It will also push a check `logstash.can_connect` into Datadog to monitor the health of Burrow
+It will also push a check `logstash.can_connect` into Datadog to monitor the health of Logstash.
