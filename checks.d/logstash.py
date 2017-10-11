@@ -3,7 +3,6 @@ from urlparse import urljoin
 
 # 3rd Party
 import requests
-import json
 
 # project
 from checks import AgentCheck
@@ -42,18 +41,19 @@ class LogstashCheck(AgentCheck):
         except Exception as e:
             self.service_check(SERVICE_CHECK_NAME,
                                AgentCheck.CRITICAL, message=str(e))
-            raise
         else:
             self.service_check(SERVICE_CHECK_NAME, AgentCheck.OK,
                                message='Connection to %s was successful' % url)
 
     def _collect_pipeline_metrics(self, logstash_address):
         '''
-        :param logstash_address:
+        Send pipeline metrics
+        :param logstash_address: Logstash address
         :return:
         '''
-        #TODO doco
         url = urljoin(logstash_address, NODE_STATS_ENDPOINT + "/pipeline")
+        response_json = self._get_json_from_api(url)
+
         metric_names = ["pipeline.events.in",
                         "pipeline.events.out",
                         "pipeline.events.filtered",
@@ -67,44 +67,62 @@ class LogstashCheck(AgentCheck):
                         "pipeline.reloads.successes",
                         "pipeline.reloads.failures"]
 
-        #TODO. add conf options for pipeline.plugin.[input,output,filters] metrics.
+        self._send_metrics("logstash", metric_names, response_json)
 
-        self._send_metrics(metric_names, url)
+        self._send_pipeline_plugin_metrics(response_json)
+
+    def _send_pipeline_plugin_metrics(self, payload_dict):
+        '''
+        Send metrics of each plugin (input, output, filter)
+        :param payload_dict: response to pipeline api in json
+        :return:
+        '''
+        input_metrics = ["events.out", "events.queue_push_duration_in_millis"]
+        output_metrics = ["events.out", "events.in", "events.duration_in_millis"]
+        filter_metrics = ["events.out", "events.in", "events.duration_in_millis", "matches"]
+
+        inputs, found = self._get_from_dict("pipeline.plugins.inputs", payload_dict)
+        for input in inputs:
+            self._send_metrics("logstash.pipeline.plugins.inputs.%s" % input['name'], input_metrics, input)
+
+        outputs, found = self._get_from_dict("pipeline.plugins.outputs", payload_dict)
+        for output in outputs:
+            self._send_metrics("logstash.pipeline.plugins.outputs.%s" % output['name'], output_metrics, output)
+
+        filters, found = self._get_from_dict("pipeline.plugins.filters", payload_dict)
+        for filter in filters:
+            self._send_metrics("logstash.pipeline.plugins.filters.%s" % filter['name'], filter_metrics, filter)
 
     def _collect_jvm_metrics(self, logstash_address):
         '''
-        :param logstash_address:
+        :param logstash_address: Logstash address
         :return:
         '''
-        #TODO doco
         url = urljoin(logstash_address, NODE_STATS_ENDPOINT + "/jvm")
+        response_json = self._get_json_from_api(url)
+
         metric_names = ["jvm.gc.collectors.old.collection_time_in_millis",
                         "jvm.gc.collectors.old.collection_count",
                         "jvm.gc.collectors.young.collection_time_in_millis",
                         "jvm.gc.collectors.young.collection_count"]
 
-        self._send_metrics(metric_names, url)
+        self._send_metrics(metric_names, response_json)
 
-    def _send_metrics(self, metric_names, endpoint):
+    def _send_metrics(self, namespace, metric_names, payload_dict):
         '''
-        :param list of metric_names: takes metric name with dot notation. eg. ['pipeline.queue.data.free_space_in_bytes', ...]
-        :param endpoint: URI which returns the above metrics.
-        :return: sends metric to datadog.
+        :param namespace/prefix of the metric
+        :param list of metric_names: list of metric names with dot notation.
+               eg. ['pipeline.queue.data.free_space_in_bytes', ...]
+        :param payload_dict: payload dict containing above metrics.(response of rest api)
+        :return: None. Sends metric to datadog.
         '''
-        try:
-            response = requests.get(endpoint, timeout=CHECK_TIMEOUT)
-            response.raise_for_status()
-        except Exception as e:
-            self.log.error("Error failed to fetch ") #TODO
-            return # _check_logstash would have already failed.So just return instead of immediately sending a fail..
-        else:
-            for metric_name in metric_names:
-                value, found = self._get_from_dict(metric_name, response.json())
-                if found:
-                    self.gauge("logstash.%s" % metric_name, value)
-                else:
-                    self.log.error("Cannot find metric %s in %s response" % (metric_name, endpoint))
-                    raise
+        for metric_name in metric_names:
+            value, found = self._get_from_dict(metric_name, payload_dict)
+            if found:
+                self.gauge("%s.%s" % (namespace, metric_name), value)
+            else:
+                self.log.error("Cannot find metric %s " % metric_name)
+                raise
 
     def _get_from_dict(self, key, dict):
         if "." in key:
@@ -117,3 +135,13 @@ class LogstashCheck(AgentCheck):
             return dict[key], True
         else:
             return None, False
+
+    def _get_json_from_api(self, endpoint):
+        try:
+            response = requests.get(endpoint, timeout=CHECK_TIMEOUT)
+            response.raise_for_status()
+        except Exception as e:
+            self.log.error("Failed to fetch %s.Skipped sending metrics. %s" % (endpoint, str(e)))
+            return # _check_logstash would have already failed.So just return instead of immediately sending a fail..
+        else:
+            return response.json()
