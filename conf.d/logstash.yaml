@@ -1,0 +1,3 @@
+init_config:
+instances:
+  - logstash_uri: http://burrow:8000
